@@ -93,6 +93,7 @@ jobs:
       ENABLE_BBG:             ${{ github.event.inputs.enable_bbg }}
     outputs:
       ksuver: ${{ steps.ksu_step.outputs.ksuver }}
+      kernelrelease: ${{ steps.kinfo.outputs.release }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -571,14 +572,18 @@ jobs:
           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/lockdown/lockdown,baseband_guard/ } }' ./security/Kconfig
 
           
-      - name: ⚙️ Set BakaSU (设置BakaSU)
+      - name: ⚙️ Set SukiSU Ultra (builtin, 内核内置)
         id: ksu_step
         run: |
           cd kernel_workspace
-          echo "正在配置BakaSU..."
-          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/refs/heads/main/kernel/setup.sh" | bash -s main
-          cd ./KernelSU 
-          KSU_VERSION=$(expr $(git rev-list --count main) + 30700 2>/dev/null || echo 114514)
+          echo "正在配置 SukiSU Ultra (builtin)..."
+          curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
+          if [ ! -d ./KernelSU ]; then
+            echo "::error::SukiSU setup.sh 未生成 KernelSU 目录，请检查上游脚本或分支参数"
+            exit 1
+          fi
+          cd ./KernelSU
+          KSU_VERSION=$(git rev-list --count HEAD)
           echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
           echo "ksuver=$KSU_VERSION" >> $GITHUB_OUTPUT
           
@@ -587,7 +592,10 @@ jobs:
         if: ${{ env.ENABLE_SUSFS == 'true' }}
         run: |
           cd kernel_workspace
-          git clone --depth=1 https://github.com/cctv18/susfs4oki.git susfs4ksu -b oki-android15-6.6
+          git clone --depth=200 https://github.com/cctv18/susfs4oki.git susfs4ksu -b oki-android15-6.6
+          # SukiSU builtin 的 SELinux hiding 依赖 SUSFS 的旧 helper 符号（新版已移除），
+          # 因此按其上游配对关系钉到 2919a9a（同属 v2.3.0）；检出失败则回退到分支最新提交。
+          ( cd susfs4ksu && git checkout -q 2919a9a 2>/dev/null && echo "[OK] SUSFS 已钉到 2919a9a" ) || echo "::warning::未能检出 2919a9a，继续使用分支最新提交；若编译报 undefined reference（SELinux hiding），手动指定该提交"
           wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/main/other_patch/69_hide_stuff.patch -O ./common/69_hide_stuff.patch
           cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
           cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
@@ -602,7 +610,7 @@ jobs:
           cd kernel_workspace
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%-Re-TG@qdykernel"' >> ./common/arch/arm64/configs/gki_defconfig
+          echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%-SukiSU-TG@qdykernel"' >> ./common/arch/arm64/configs/gki_defconfig
           
           if [ "${{ env.ENABLE_SUSFS }}" == 'true' ];then
             echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -716,6 +724,20 @@ jobs:
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
           echo "ccache 状态："
           ccache -s
+
+      - name: 🔎 Report kernel release (记录真实内核版本)
+        id: kinfo
+        run: |
+          REL="$(cat kernel_workspace/common/out/include/config/kernel.release 2>/dev/null || true)"
+          if [ -z "$REL" ]; then
+            REL="$(find kernel_workspace/common/out -path '*include/config/kernel.release' -print -quit 2>/dev/null | xargs -r cat || true)"
+          fi
+          if [ -z "$REL" ]; then
+            REL="unknown"
+          fi
+          echo "KERNEL_RELEASE=$REL" >> $GITHUB_ENV
+          echo "release=$REL" >> $GITHUB_OUTPUT
+          echo "内核真实版本：$REL" | tee -a $GITHUB_STEP_SUMMARY
       
       - name: 🕒 Calculate build time (计算构建时间)
         run: |
@@ -791,7 +813,7 @@ jobs:
       - name: 📤 Upload AnyKernel3 (上传 Anykernel3)
         uses: actions/upload-artifact@v6
         with:
-         name: AK3_${{ env.KSUVER }}_${{ env.DEVICES_NAME }}_BakaSU
+         name: AK3_${{ env.KSUVER }}_${{ env.DEVICES_NAME }}_SukiSUUltra
          path: ./AnyKernel3/*
 
   upload_rekernel:
@@ -947,6 +969,12 @@ jobs:
           # KSU 版本号（来自 build job 输出的 ksuver）
           KSU_VER="${{ needs.build.outputs.ksuver }}"
 
+          # 内核真实版本（来自 build job 输出的 kernelrelease）
+          KERNEL_REL="${{ needs.build.outputs.kernelrelease }}"
+          if [ -z "$KERNEL_REL" ]; then
+            KERNEL_REL="unknown"
+          fi
+
           # 功能配置描述
           FEATURES=""
           if [ "${{ github.event.inputs.enable_ReKernel }}" = "true" ]; then
@@ -964,7 +992,7 @@ jobs:
           if [ "${{ github.event.inputs.enable_droidspaces }}" = "true" ]; then
             FEATURES="${FEATURES}- ✅ Droidspaces 容器支持"$'\n'
           fi
-          FEATURES="${FEATURES}- ✅ BakaSU (KernelSU)"$'\n'
+          FEATURES="${FEATURES}- ✅ SukiSU Ultra (builtin, 内核内置驱动)"$'\n'
           if [ "${{ github.event.inputs.enable_susfs }}" = "true" ]; then
             FEATURES="${FEATURES}- ✅ SUSFS 挂载支持"$'\n'
           fi
@@ -985,8 +1013,8 @@ jobs:
           cat << ENDOFF > release_notes.md
           ### 📱 SM8750 欧加真通用内核 | 构建信息
 
-          - **内核版本**: SM8750 (Android 15 / 6.6)
-          - **BakaSU 版本**: ${KSU_VER}
+          - **内核版本**: ${KERNEL_REL} (SM8750 / GKI android15-6.6)
+          - **SukiSU Ultra 版本**: ${KSU_VER} (builtin)
           - **编译时间**: ${TIME_FORM}
           - **编译机型**: ${DEVICE_NAME}
           - **内核后缀**: ${KERNEL_SUFFIX}
@@ -1000,18 +1028,17 @@ jobs:
           ${FEATURES}
           ### ⏫️ 更新内容
 
-          - 更新 BakaSU 至最新版本 (${KSU_VER})
+          - 更新 SukiSU Ultra (builtin) 至最新版本 (${KSU_VER})
           - 同步上游内核源码
 
           ### 📋 安装方法 | Installation Guide
 
-          1. 若你已刷入 BakaSU 内核，且 BakaSU 管理器已更新至最新版本，可在管理器中直接刷入 AnyKernel 刷机包并重启；
+          1. 本内核驱动为 SukiSU Ultra (builtin)，请配合 SukiSU Ultra 管理器使用；若管理器显示"未工作"，多半是管理器版本与内核 UAPI 不匹配（builtin 分支常见 UAPI 2），请改用与内核同代的管理器（如 v4.2.0 那代）；
           2. 由于 KernelSU 上游更新了元模块功能，最新版 KSU 管理器需要配合元模块 (metamodule) 才能正常挂载模块。目前的元模块包括 [meta overlayfs](https://github.com/KernelSU-Modules-Repo/meta-overlayfs), [mountify](https://github.com/backslashxx/mountify), [meta magicmount](https://github.com/7a72/meta-magic_mount/) 等。若你是第一次使用 KSU 或刚从旧版 KSU 管理器升级至新版，请先安装一个元模块；
           3. 若启用 Re-Kernel，需刷入配套Re-Kernel模块并配合 NoActive 软件使用，以提升后台冻结能力。
 
           #### 🔗 相关链接
 
-          - BakaSU 管理器: [BakaSU_CI](https://github.com/cctv18/BakaSU_CI/releases)
           - SukiSU Ultra 管理器: [SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
           - KernelSU Next 管理器: [KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases)
           - KernelSU 原版管理器: [KernelSU](https://github.com/tiann/KernelSU/releases)
