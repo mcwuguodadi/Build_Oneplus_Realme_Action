@@ -223,15 +223,14 @@ jobs:
             # 可选：钉住内核源码快照（OSS 分支会随 OTA 前滚，早期快照只能按 commit 取）
             if [ -n "${KERNEL_COMMIT}" ]; then
               SRC_URL="https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750/archive/${KERNEL_COMMIT}.zip"
-              SRC_DIR="android_kernel_common_oneplus_sm8750-${KERNEL_COMMIT}"
               echo "使用指定内核源码提交: ${KERNEL_COMMIT}"
             else
               SRC_URL="https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/${REPO_MANIFEST}.zip"
-              SRC_DIR="android_kernel_common_oneplus_sm8750-oneplus-${REPO_MANIFEST}"
             fi
             aria2c -s16 -x16 -k1M "$SRC_URL" -o common.zip
             unzip -q common.zip && 
-            mv "$SRC_DIR" common
+            # 归档目录名随 ref 变化（分支=…-oneplus_xxx，commit=…-<完整SHA>），统一用通配匹配
+            mv android_kernel_common_oneplus_sm8750-* common
           fi
           rm -rf common.zip 
           echo "正在克隆 llvm-clang18 工具链..."
