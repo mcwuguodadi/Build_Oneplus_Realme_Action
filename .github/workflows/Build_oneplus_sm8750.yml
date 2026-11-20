@@ -593,9 +593,13 @@ jobs:
         run: |
           cd kernel_workspace
           git clone --depth=200 https://github.com/cctv18/susfs4oki.git susfs4ksu -b oki-android15-6.6
-          # SukiSU builtin 的 SELinux hiding 依赖 SUSFS 的旧 helper 符号（新版已移除），
-          # 因此按其上游配对关系钉到 2919a9a（同属 v2.3.0）；检出失败则回退到分支最新提交。
-          ( cd susfs4ksu && git checkout -q 2919a9a 2>/dev/null && echo "[OK] SUSFS 已钉到 2919a9a" ) || echo "::warning::未能检出 2919a9a，继续使用分支最新提交；若编译报 undefined reference（SELinux hiding），手动指定该提交"
+          # SukiSU Ultra builtin 已接入 SUSFS 的 getpriority uid filter 新接口：
+          #   susfs_set_priority_uid_filter / susfs_parse_priority_app_strings /
+          #   CMD_SUSFS_SET_PRIORITY_UID_FILTER（见 drivers/kernelsu/*，编译期强依赖）
+          # 这些符号在旧提交（如 2919a9a / 2026-10-10）中不存在，只有较新的 susfs4oki 才有。
+          # 故钉到 c7f303f（2026-11-17 "kernel & KernelSU: Sync with upstream"），保证可复现。
+          # 千万不要再回退到 2919a9a 及更早：会缺符号，编译必然失败。
+          ( cd susfs4ksu && git checkout -q c7f303f 2>/dev/null && echo "[OK] SUSFS 已钉到 c7f303f（含 priority uid filter 接口）" ) || echo "::warning::未能检出 c7f303f，继续使用分支最新提交"
           wget https://raw.githubusercontent.com/cctv18/oppo_oplus_realme_sm8750/main/other_patch/69_hide_stuff.patch -O ./common/69_hide_stuff.patch
           cp ./susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
           cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
