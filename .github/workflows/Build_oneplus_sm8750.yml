@@ -39,6 +39,11 @@ on:
         required: false
         default: ''
 
+      kernel_commit:
+        description: "🔖 内核源码提交(SHA)- OSS 分支前滚后用此回退到指定快照，留空则用分支最新"
+        required: false
+        default: ''
+
       enable_susfs:
         description: "启用SUSFS"
         required: true
@@ -85,6 +90,7 @@ jobs:
       DEVICES_NAME:           ${{ github.event.inputs.device_name }}
       CUSTOM_KERNEL_SUFFIX:   ${{ github.event.inputs.custom_kernel_suffix }}
       CUSTOM_KERNEL_TIME:     ${{ github.event.inputs.custom_kernel_time }}
+      KERNEL_COMMIT:          ${{ github.event.inputs.kernel_commit }}
       ENABLE_SUSFS:           ${{ github.event.inputs.enable_susfs }}
       ENABLE_DROIDSPACES:     ${{ github.event.inputs.enable_droidspaces }}
       ENABLE_REKERNEL:        ${{ github.event.inputs.enable_ReKernel }}
@@ -214,9 +220,18 @@ jobs:
             unzip -q common.zip && 
             mv "android_kernel_oneplus_mt6991-oneplus-${REPO_MANIFEST}" common
           else
-            aria2c -s16 -x16 -k1M https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/${REPO_MANIFEST}.zip -o common.zip
+            # 可选：钉住内核源码快照（OSS 分支会随 OTA 前滚，早期快照只能按 commit 取）
+            if [ -n "${KERNEL_COMMIT}" ]; then
+              SRC_URL="https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750/archive/${KERNEL_COMMIT}.zip"
+              SRC_DIR="android_kernel_common_oneplus_sm8750-${KERNEL_COMMIT}"
+              echo "使用指定内核源码提交: ${KERNEL_COMMIT}"
+            else
+              SRC_URL="https://github.com/OnePlusOSS/android_kernel_common_oneplus_sm8750/archive/refs/heads/oneplus/${REPO_MANIFEST}.zip"
+              SRC_DIR="android_kernel_common_oneplus_sm8750-oneplus-${REPO_MANIFEST}"
+            fi
+            aria2c -s16 -x16 -k1M "$SRC_URL" -o common.zip
             unzip -q common.zip && 
-            mv "android_kernel_common_oneplus_sm8750-oneplus-${REPO_MANIFEST}" common
+            mv "$SRC_DIR" common
           fi
           rm -rf common.zip 
           echo "正在克隆 llvm-clang18 工具链..."
