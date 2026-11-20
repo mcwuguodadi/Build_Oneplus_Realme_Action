@@ -757,6 +757,16 @@ jobs:
           echo "release=$REL" >> $GITHUB_OUTPUT
           echo "内核真实版本：$REL" | tee -a $GITHUB_STEP_SUMMARY
       
+      - name: 🧾 Upload raw Image (上传原样镜像，便于离线验收与手动重打包)
+        uses: actions/upload-artifact@v6
+        with:
+          name: Image_${{ env.KSUVER }}_${{ env.DEVICES_NAME }}
+          path: |
+            kernel_workspace/common/out/arch/arm64/boot/Image
+            kernel_workspace/common/out/include/config/kernel.release
+            kernel_workspace/common/.config
+          if-no-files-found: warn
+      
       - name: 🕒 Calculate build time (计算构建时间)
         run: |
           END=$(date +%s)
