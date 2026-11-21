@@ -756,6 +756,30 @@ jobs:
           echo "KERNEL_RELEASE=$REL" >> $GITHUB_ENV
           echo "release=$REL" >> $GITHUB_OUTPUT
           echo "内核真实版本：$REL" | tee -a $GITHUB_STEP_SUMMARY
+
+          # 硬校验：内核子版本必须与目标设备一致，否则产物不可用（vendor 模块 vermagic/CRC 不匹配）
+          TARGET_SUBLEVEL="6.6.89"
+          case "$REL" in
+            ${TARGET_SUBLEVEL}*) echo "[OK] 子版本匹配 ${TARGET_SUBLEVEL}" ;;
+            *)
+              echo "::error::内核子版本不符：期望 ${TARGET_SUBLEVEL}*，实际 ${REL}；该产物禁止刷入，请改用 kernel_commit 指定 6.6.89 快照"
+              exit 1
+              ;;
+          esac
+
+          # 若指定了自定义后缀，要求版本串以其结尾（保证 LOCALVERSION 与设备原厂串一致）
+          if [ -n "${CUSTOM_KERNEL_SUFFIX}" ]; then
+            case "$REL" in
+              *"${CUSTOM_KERNEL_SUFFIX}") echo "[OK] LOCALVERSION 匹配 ${CUSTOM_KERNEL_SUFFIX}" ;;
+              *)
+                echo "::error::LOCALVERSION 不符：期望以 ${CUSTOM_KERNEL_SUFFIX} 结尾，实际 ${REL}；自定义后缀会破坏 vendor 模块加载"
+                exit 1
+                ;;
+            esac
+          fi
+
+          # 记录源码快照，便于事后追溯（ARB 规避要求快照不得旧于设备固件基线）
+          echo "源码快照: ${KERNEL_COMMIT:-分支最新提交}" | tee -a $GITHUB_STEP_SUMMARY
       
       - name: 🧾 Upload raw Image (上传原样镜像，便于离线验收与手动重打包)
         uses: actions/upload-artifact@v6
