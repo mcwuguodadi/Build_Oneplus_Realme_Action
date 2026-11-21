@@ -738,7 +738,9 @@ jobs:
           export KBUILD_BUILD_USER="${KBUILD_USER_OVERRIDE:-kleaf}"
           export KBUILD_BUILD_HOST="${KBUILD_HOST_OVERRIDE:-build-host}"
           export KBUILD_BUILD_TIMESTAMP="${KBUILD_TS_OVERRIDE:-Fri Sep 19 06:13:40 UTC 2025}"
-          echo "KBUILD_BUILD 身份: ${KBUILD_BUILD_USER}@${KBUILD_BUILD_HOST} ${KBUILD_BUILD_TIMESTAMP}"
+          # 源码树内 .version 为空会让 UTS_VERSION 变成 "#"（原厂为 "#1"），显式固定
+          export KBUILD_BUILD_VERSION="1"
+          echo "KBUILD_BUILD 身份: ${KBUILD_BUILD_USER}@${KBUILD_BUILD_HOST} ${KBUILD_BUILD_TIMESTAMP} #${KBUILD_BUILD_VERSION}"
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
