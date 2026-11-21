@@ -732,7 +732,13 @@ jobs:
           ./test-wrapper.sh stat ./Makefile
           chmod +x cc-wrapper ld-wrapper
           LD_PRELOAD=$PRELOAD_LIBS stat ./Makefile
-          export KBUILD_BUILD_TIMESTAMP="${KERNEL_TIME}"
+          # 与原厂 boot 的 uname/`/proc/version` 逐字符对齐：
+          # 原厂串为 "Linux version 6.6.89-... (kleaf@build-host) (Android (11368308 ...)) #1 SMP PREEMPT Fri Sep 19 06:13:40 UTC 2025"
+          # 默认值即本机型 16.0.3.501 原厂构建身份；如换基线可用环境变量覆盖。
+          export KBUILD_BUILD_USER="${KBUILD_USER_OVERRIDE:-kleaf}"
+          export KBUILD_BUILD_HOST="${KBUILD_HOST_OVERRIDE:-build-host}"
+          export KBUILD_BUILD_TIMESTAMP="${KBUILD_TS_OVERRIDE:-Fri Sep 19 06:13:40 UTC 2025}"
+          echo "KBUILD_BUILD 身份: ${KBUILD_BUILD_USER}@${KBUILD_BUILD_HOST} ${KBUILD_BUILD_TIMESTAMP}"
           sudo rm -rf /usr/share/dotnet &
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
